@@ -140,6 +140,10 @@ def handler(job):
     
     # Get the prompt (optional, use default if not provided)
     prompt = job_input.get("prompt", CAPTION_PROMPT)
+
+    if "prompt" not in job_input:
+        prompt = job_input["prompt"]
+
     max_new_tokens = job_input.get("max_new_tokens", MAX_NEW_TOKENS)
     
     # Handle the image (base64, URL, or file path)
