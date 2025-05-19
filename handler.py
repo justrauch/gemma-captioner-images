@@ -63,17 +63,23 @@ except Exception as e:
 
 print("Model and processor loaded and ready for inference")
 
-def caption_image(image_data, prompt=CAPTION_PROMPT, max_new_tokens=MAX_NEW_TOKENS):
+def caption_image(images_data, prompt=CAPTION_PROMPT, max_new_tokens=MAX_NEW_TOKENS):
     """Generate a caption for the given image."""
     try:
+        image_blocks = [
+            {
+                "type": "image",
+                "image": {"url": data}
+            }
+            for data in images_data
+        ]
         # Create messages for the model with custom prompt
         messages = [
             {
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "image", "image": image_data}
-                ]
+                ] + image_blocks
             }
         ]
         
@@ -121,7 +127,7 @@ def handler(job):
     This is the handler function that will be called by the serverless worker.
     Job input format:
     {
-        "image": "base64 encoded image or URL",
+        "images": ["base64 encoded image or URL", ...],
         "prompt": "Optional custom prompt for captioning",
         "max_new_tokens": 256  # Optional, defaults to 256
     }
@@ -129,60 +135,65 @@ def handler(job):
     job_input = job["input"]
     
     # Basic input validation
-    if "image" not in job_input:
-        return {"error": "No image provided in input"}
+    if "images" not in job_input:
+        return {"error": "No images provided in input"}
     
     # Get the prompt (optional, use default if not provided)
     prompt = job_input.get("prompt", CAPTION_PROMPT)
     max_new_tokens = job_input.get("max_new_tokens", MAX_NEW_TOKENS)
     
     # Handle the image (base64, URL, or file path)
-    image_input = job_input["image"]
-    
+    images_input = job_input["images"]
+    images_data = []
+
     try:
-        # Case 1: Base64 encoded image
-        if isinstance(image_input, str) and image_input.startswith("data:image"):
-            # Extract base64 part after the comma
-            base64_data = image_input.split(",")[1]
-            image_data = Image.open(io.BytesIO(base64.b64decode(base64_data)))
+        for image in images_input:
+            # Case 1: Base64 encoded image
+            if isinstance(image, str) and image.startswith("data:image"):
+                # Extract base64 part after the comma
+                base64_data = image.split(",")[1]
+                image_data = Image.open(io.BytesIO(base64.b64decode(base64_data)))
+            
+            # Case 2: Pure base64 string (without data URI prefix)
+            elif isinstance(image, str) and len(image) > 100:
+                try:
+                    image_data = Image.open(io.BytesIO(base64.b64decode(image)))
+                except Exception:
+                    # If not a valid base64, try as URL or file path
+                    if image.startswith(('http://', 'https://')):
+                        # It's a URL, we need to download it
+                        import requests
+                        response = requests.get(image, stream=True)
+                        response.raise_for_status()  # Will raise an exception for HTTP errors
+                        image_data = Image.open(io.BytesIO(response.content))
+                    else:
+                        # Assume it's a file path
+                        image_data = Image.open(image)
+            
+            # Case 3: URL starting with http:// or https://
+            elif isinstance(image, str) and image.startswith(('http://', 'https://')):
+                # It's a URL, we need to download it
+                import requests
+                response = requests.get(image, stream=True)
+                response.raise_for_status()  # Will raise an exception for HTTP errors
+                image_data = Image.open(io.BytesIO(response.content))
+            
+            # Case 4: Local file path
+            elif isinstance(image, str):
+                # Assume it's a file path
+                image_data = Image.open(image)
+            
+            else:
+                return {"error": "Invalid image format. Please provide a base64 encoded image, URL, or file path."}
+            
+            # Convert to RGB mode to ensure compatibility
+            image_data = image_data.convert("RGB")
+
+            # Collect image
+            images_data.append(image_data)
         
-        # Case 2: Pure base64 string (without data URI prefix)
-        elif isinstance(image_input, str) and len(image_input) > 100:
-            try:
-                image_data = Image.open(io.BytesIO(base64.b64decode(image_input)))
-            except Exception:
-                # If not a valid base64, try as URL or file path
-                if image_input.startswith(('http://', 'https://')):
-                    # It's a URL, we need to download it
-                    import requests
-                    response = requests.get(image_input, stream=True)
-                    response.raise_for_status()  # Will raise an exception for HTTP errors
-                    image_data = Image.open(io.BytesIO(response.content))
-                else:
-                    # Assume it's a file path
-                    image_data = Image.open(image_input)
-        
-        # Case 3: URL starting with http:// or https://
-        elif isinstance(image_input, str) and image_input.startswith(('http://', 'https://')):
-            # It's a URL, we need to download it
-            import requests
-            response = requests.get(image_input, stream=True)
-            response.raise_for_status()  # Will raise an exception for HTTP errors
-            image_data = Image.open(io.BytesIO(response.content))
-        
-        # Case 4: Local file path
-        elif isinstance(image_input, str):
-            # Assume it's a file path
-            image_data = Image.open(image_input)
-        
-        else:
-            return {"error": "Invalid image format. Please provide a base64 encoded image, URL, or file path."}
-        
-        # Convert to RGB mode to ensure compatibility
-        image_data = image_data.convert("RGB")
-        
-        # Process the image to get the caption
-        caption = caption_image(image_data, prompt, max_new_tokens)
+        # Process all images together to get one joint caption
+        caption = caption_image(images_data, prompt, max_new_tokens)
         
         # Return the result
         return {
@@ -193,7 +204,6 @@ def handler(job):
         import traceback
         error_trace = traceback.format_exc()
         return {"error": f"Error processing image: {str(e)}", "traceback": error_trace}
-
 
 # Start the serverless function
 runpod.serverless.start({"handler": handler})
