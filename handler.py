@@ -7,7 +7,7 @@ import torch
 from PIL import Image
 import base64
 import io
-from transformers import AutoProcessor, Gemma3ForConditionalGeneration
+from transformers import AutoProcessor, Gemma3ForConditionalGeneration, BitsAndBytesConfig
 
 # ===== USER MODIFIABLE SETTINGS =====
 # Get model ID from environment variable with fallback to default
@@ -37,7 +37,11 @@ else:
     token_param = {}
     print("No Hugging Face token provided (this will only work for non-gated models)")
 
-dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+# Configure quantization
+quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+
+# Load the model
+dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 try:
@@ -45,6 +49,7 @@ try:
         MODEL_ID,
         torch_dtype=dtype,
         device_map="auto" if torch.cuda.is_available() else None,
+        quantization_config=quantization_config,
         **token_param,
     ).eval()
     
