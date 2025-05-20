@@ -160,6 +160,10 @@ def handler(job):
                 # Convert to RGB mode to ensure compatibility
                 image_data = image_data.convert("RGB")
 
+                # Resize image to fixed resolution
+                image_data = image_data.resize((224, 224))
+
+
                 # Collect image
                 images_data.append(image_data)
             except Exception as inner_e:
