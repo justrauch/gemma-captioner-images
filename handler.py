@@ -78,12 +78,16 @@ def caption_image(images_data, prompt=CAPTION_PROMPT, max_new_tokens=MAX_NEW_TOK
         ]
 
         # Process inputs
+        processor.tokenizer.padding_side = "left"
+
         inputs = processor.apply_chat_template(
             messages,
             add_generation_prompt=True,
             tokenize=True,
             return_dict=True,
-            return_tensors="pt"
+            return_tensors="pt",
+            padding="longest",
+            pad_to_multiple_of=8
         )
 
         # Move inputs to device
