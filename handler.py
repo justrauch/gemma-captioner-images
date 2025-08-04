@@ -66,6 +66,9 @@ print("Model and processor loaded and ready for inference")
 def caption_image(images_data, prompt=CAPTION_PROMPT, max_new_tokens=MAX_NEW_TOKENS):
     """Generate a caption for the given image."""
     try:
+        #############################################################################
+        ### Änderung hier: ##########################################################
+        ### Übergibt mehrere Bilder statt nur eines an das Modell ###################
         messages = [
             {
                 "role": "user",
@@ -87,6 +90,8 @@ def caption_image(images_data, prompt=CAPTION_PROMPT, max_new_tokens=MAX_NEW_TOK
             return_dict=True,
             return_tensors="pt",
             padding="longest",
+            ############ Pad die Sequenzlängen zusätzlich auf ein Vielfaches von 8 # GPU-freundliche Ausrichtung, 
+            ############ hat zuvor Fehler verursacht, daher aktiviert
             pad_to_multiple_of=8
         )
 
